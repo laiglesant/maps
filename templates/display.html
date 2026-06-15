@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="refresh" content="5">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Navegación</title>
+  <title>Nav</title>
   <style>
     body {
       background: #111;
@@ -12,49 +11,72 @@
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 8px;
-      font-size: 18px;
     }
     #dest {
-      font-size: 14px;
-      color: #aaa;
+      font-size: 13px;
+      color: #e94560;
       margin-bottom: 6px;
-    }
-    #instruction {
-      font-size: 28px;
       font-weight: bold;
-      color: #0f0;
-      margin: 10px 0;
-      line-height: 1.3;
+      text-transform: uppercase;
+      letter-spacing: .5px;
     }
-    #dist {
-      font-size: 42px;
-      font-weight: bold;
-      color: #ff0;
+    #main {
+      display: table;
+      width: 100%;
       margin: 6px 0;
     }
-    #progress {
-      font-size: 14px;
-      color: #aaa;
+    #icon-cell {
+      display: table-cell;
+      vertical-align: middle;
+      font-size: 64px;
+      width: 80px;
+      text-align: center;
+      color: #f39c12;
+      padding-right: 8px;
+    }
+    #text-cell {
+      display: table-cell;
+      vertical-align: middle;
+    }
+    #instruction {
+      font-size: 22px;
+      font-weight: bold;
+      color: #2ecc71;
+      line-height: 1.2;
+    }
+    #dist {
+      font-size: 44px;
+      font-weight: bold;
+      color: #f39c12;
       margin-top: 4px;
     }
-    #gps {
+    #next {
+      margin-top: 8px;
+      padding: 7px 10px;
+      background: #222;
+      border-left: 3px solid #555;
+      font-size: 15px;
+      color: #bbb;
+    }
+    #next-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    #meta {
+      margin-top: 8px;
       font-size: 12px;
-      color: #888;
-      margin-top: 6px;
+      color: #666;
+      display: table;
+      width: 100%;
     }
-    #map {
-      margin-top: 10px;
-    }
-    #map img {
-      max-width: 100%;
-      border: 1px solid #444;
-      display: block;
-    }
-    #noroute {
-      font-size: 22px;
-      color: #f80;
-      margin-top: 20px;
-    }
+    #progress  { display: table-cell; }
+    #remaining { display: table-cell; text-align: right; }
+    #gps       { font-size: 11px; color: #555; margin-top: 4px; }
+    #map       { margin-top: 10px; }
+    #map img   { max-width: 100%; border: 1px solid #333; display: block; }
+    #noroute   { font-size: 20px; color: #f39c12; margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -64,22 +86,38 @@
   {% endif %}
 
   {% if progress %}
-    <div id="instruction">{{ instruction }}</div>
-    <div id="dist">{{ dist_str }}</div>
-    <div id="progress">{{ progress }}</div>
+    <div id="main">
+      <div id="icon-cell">{{ icon }}</div>
+      <div id="text-cell">
+        <div id="instruction">{{ instruction }}</div>
+        <div id="dist">{{ dist_str }}</div>
+      </div>
+    </div>
+
+    {% if next_text %}
+    <div id="next">
+      <div id="next-label">Después</div>
+      {{ next_text }}
+    </div>
+    {% endif %}
+
+    <div id="meta">
+      <div id="progress">{{ progress }}</div>
+      <div id="remaining">{{ remaining }}</div>
+    </div>
   {% else %}
     <div id="noroute">{{ instruction }}</div>
   {% endif %}
 
   {% if gps_age is not none %}
-    <div id="gps">GPS actualizado hace {{ gps_age }}s</div>
+    <div id="gps">GPS: hace {{ gps_age }}s</div>
   {% else %}
     <div id="gps">GPS: sin datos</div>
   {% endif %}
 
   {% if map_url %}
   <div id="map">
-    <img src="{{ map_url }}" alt="Mapa" width="400" height="300">
+    <img src="{{ map_url }}" alt="Mapa" width="380" height="240">
   </div>
   {% endif %}
 

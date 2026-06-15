@@ -2,134 +2,426 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GPS Móvil</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Navegación GPS</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; }
-    h2 { margin: 0 0 12px; }
-    #status { padding: 8px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
-    .ok   { background: #d4edda; color: #155724; }
-    .warn { background: #fff3cd; color: #856404; }
-    .err  { background: #f8d7da; color: #721c24; }
-    label { display: block; margin-top: 10px; font-weight: bold; font-size: 14px; }
-    input[type=text], input[type=number] {
-      width: 100%; padding: 8px; box-sizing: border-box;
-      border: 1px solid #ccc; border-radius: 4px; font-size: 14px;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, Arial, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
     }
-    button {
-      margin-top: 10px; padding: 10px 16px; background: #007bff;
-      color: #fff; border: none; border-radius: 4px; font-size: 15px; cursor: pointer;
+
+    /* ---- Header / GPS pill ---- */
+    #header {
+      background: #16213e;
+      padding: 10px 14px 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #0f3460;
     }
-    button:active { background: #0056b3; }
-    #info { font-size: 13px; color: #555; margin-top: 12px; }
-    #step { font-size: 15px; font-weight: bold; margin-top: 10px; color: #333; }
-    hr { margin: 16px 0; }
+    #gps-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #888;
+      flex-shrink: 0;
+      transition: background .4s;
+    }
+    #gps-dot.ok  { background: #2ecc71; }
+    #gps-dot.err { background: #e74c3c; }
+    #gps-info { font-size: 13px; color: #aaa; }
+
+    /* ---- Search box ---- */
+    #search-wrap {
+      padding: 12px 14px 0;
+      position: relative;
+    }
+    #search-row {
+      display: flex;
+      gap: 8px;
+    }
+    #search-input {
+      flex: 1;
+      padding: 11px 14px;
+      border-radius: 24px;
+      border: 2px solid #0f3460;
+      background: #16213e;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    #search-input:focus { border-color: #e94560; }
+    #search-btn {
+      padding: 0 18px;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 24px;
+      font-size: 15px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #search-btn:active { background: #c73652; }
+
+    /* ---- Results dropdown ---- */
+    #results {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 10px;
+      margin-top: 6px;
+      overflow: hidden;
+      display: none;
+    }
+    .result-item {
+      padding: 12px 14px;
+      border-bottom: 1px solid #0f3460;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1.4;
+      color: #ddd;
+    }
+    .result-item:last-child { border-bottom: none; }
+    .result-item:active, .result-item.selected { background: #e9456022; color: #fff; }
+    .result-name { font-weight: bold; color: #fff; }
+    #results-msg { padding: 12px 14px; color: #888; font-size: 14px; display: none; }
+
+    /* ---- Current nav card ---- */
+    #nav-card {
+      margin: 14px;
+      background: #16213e;
+      border-radius: 14px;
+      padding: 14px;
+      border: 1px solid #0f3460;
+      display: none;
+    }
+    #nav-dest {
+      font-size: 13px;
+      color: #e94560;
+      margin-bottom: 8px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    #nav-instruction {
+      font-size: 20px;
+      font-weight: bold;
+      color: #fff;
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+    #nav-dist {
+      font-size: 30px;
+      font-weight: bold;
+      color: #f39c12;
+    }
+    #nav-remaining {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+    }
+    #nav-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .nav-btn {
+      flex: 1;
+      padding: 9px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #btn-recalc  { background: #27ae60; color: #fff; }
+    #btn-cancel  { background: #c0392b; color: #fff; }
+
+    /* ---- Steps list ---- */
+    #steps-wrap {
+      margin: 0 14px 14px;
+      display: none;
+    }
+    #steps-title {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    #steps-list {
+      background: #16213e;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #0f3460;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #0f3460;
+      font-size: 14px;
+    }
+    .step-row:last-child { border-bottom: none; }
+    .step-row.active { background: #e9456022; }
+    .step-num {
+      width: 22px; height: 22px;
+      background: #0f3460;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+      color: #aaa;
+    }
+    .step-row.active .step-num { background: #e94560; color: #fff; }
+    .step-instr { flex: 1; color: #ddd; }
+    .step-dist  { color: #f39c12; font-size: 13px; white-space: nowrap; }
+
+    /* ---- Spinner ---- */
+    #spinner {
+      display: none;
+      text-align: center;
+      padding: 14px;
+      color: #888;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <h2>Control de Navegación</h2>
 
-  <div id="status" class="warn">Iniciando GPS…</div>
+<div id="header">
+  <div id="gps-dot"></div>
+  <div id="gps-info">Iniciando GPS…</div>
+</div>
 
-  <label>Destino (descripción)</label>
-  <input type="text" id="dest_label" placeholder="Ej: Supermercado">
+<div id="search-wrap">
+  <div id="search-row">
+    <input id="search-input" type="text" placeholder="Buscar destino…"
+           autocomplete="off" autocorrect="off" spellcheck="false">
+    <button id="search-btn" onclick="doSearch()">Buscar</button>
+  </div>
+  <div id="results-msg"></div>
+  <div id="results"></div>
+</div>
 
-  <label>Latitud destino</label>
-  <input type="number" id="dest_lat" step="any"
-    value="{{ dest_lat if dest_lat else '' }}"
-    placeholder="-34.12345">
+<div id="spinner">Calculando ruta…</div>
 
-  <label>Longitud destino</label>
-  <input type="number" id="dest_lon" step="any"
-    value="{{ dest_lon if dest_lon else '' }}"
-    placeholder="-58.12345">
+<div id="nav-card">
+  <div id="nav-dest"></div>
+  <div id="nav-instruction"></div>
+  <div id="nav-dist"></div>
+  <div id="nav-remaining"></div>
+  <div id="nav-actions">
+    <button class="nav-btn" id="btn-recalc" onclick="recalculate()">Recalcular</button>
+    <button class="nav-btn" id="btn-cancel" onclick="cancelRoute()">Cancelar</button>
+  </div>
+</div>
 
-  <button onclick="setDest()">Establecer destino y calcular ruta</button>
-  <button onclick="recalculate()" style="background:#28a745;margin-left:6px">Recalcular</button>
+<div id="steps-wrap">
+  <div id="steps-title">Itinerario</div>
+  <div id="steps-list"></div>
+</div>
 
-  <hr>
-  <div id="step">—</div>
-  <div id="info">Posición: —</div>
+<script>
+var currentLat = null, currentLon = null;
+var searchTimeout = null;
 
-  <script>
-  var watchId = null;
-  var currentLat = null, currentLon = null;
-  var BACKEND = "";   // mismo origen
+// ---- GPS ----
+function setGPS(state, msg) {
+  document.getElementById("gps-dot").className = state;
+  document.getElementById("gps-info").textContent = msg;
+}
 
-  function updateStatus(msg, cls) {
-    var el = document.getElementById("status");
-    el.textContent = msg;
-    el.className = cls;
+function sendLocation(lat, lon) {
+  currentLat = lat; currentLon = lon;
+  fetch("/update_location", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({lat: lat, lon: lon})
+  }).catch(function(){});
+}
+
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(
+    function(pos) {
+      var lat = pos.coords.latitude;
+      var lon = pos.coords.longitude;
+      var acc = Math.round(pos.coords.accuracy);
+      sendLocation(lat, lon);
+      setGPS("ok", lat.toFixed(5) + ", " + lon.toFixed(5) + "  ±" + acc + "m");
+    },
+    function(err) {
+      setGPS("err", "GPS: " + err.message);
+    },
+    {enableHighAccuracy: true, maximumAge: 3000, timeout: 15000}
+  );
+} else {
+  setGPS("err", "GPS no disponible en este navegador");
+}
+
+// ---- Search ----
+document.getElementById("search-input").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") doSearch();
+});
+document.getElementById("search-input").addEventListener("input", function() {
+  clearTimeout(searchTimeout);
+  var q = this.value.trim();
+  if (q.length > 3) {
+    searchTimeout = setTimeout(doSearch, 600);
+  } else {
+    hideResults();
   }
+});
 
-  function sendLocation(lat, lon) {
-    currentLat = lat; currentLon = lon;
-    fetch(BACKEND + "/update_location", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({lat: lat, lon: lon})
+function doSearch() {
+  var q = document.getElementById("search-input").value.trim();
+  if (!q) return;
+  hideResults();
+  showMsg("Buscando…");
+  fetch("/search?q=" + encodeURIComponent(q))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      showMsg("");
+      if (!Array.isArray(data) || data.length === 0) {
+        showMsg("Sin resultados para \"" + q + "\"");
+        return;
+      }
+      showResults(data);
+    })
+    .catch(function(e) { showMsg("Error al buscar: " + e); });
+}
+
+function showMsg(txt) {
+  var el = document.getElementById("results-msg");
+  el.textContent = txt;
+  el.style.display = txt ? "block" : "none";
+}
+
+function hideResults() {
+  document.getElementById("results").style.display = "none";
+  document.getElementById("results").innerHTML = "";
+}
+
+function showResults(items) {
+  var el = document.getElementById("results");
+  el.innerHTML = "";
+  items.forEach(function(item) {
+    var div = document.createElement("div");
+    div.className = "result-item";
+    // Separate first part (name) from rest of address
+    var parts = item.label.split(",");
+    var name  = parts[0].trim();
+    var addr  = parts.slice(1, 4).join(",").trim();
+    div.innerHTML = "<div class='result-name'>" + esc(name) + "</div>"
+                  + (addr ? "<div style='font-size:12px;color:#888'>" + esc(addr) + "</div>" : "");
+    div.addEventListener("click", (function(it) {
+      return function() { selectDest(it); };
+    })(item));
+    el.appendChild(div);
+  });
+  el.style.display = "block";
+}
+
+function esc(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function selectDest(item) {
+  hideResults();
+  showMsg("");
+  document.getElementById("search-input").value = item.label.split(",")[0].trim();
+  document.getElementById("spinner").style.display = "block";
+  document.getElementById("nav-card").style.display = "none";
+  document.getElementById("steps-wrap").style.display = "none";
+
+  fetch("/set_destination", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({lat: item.lat, lon: item.lon, label: item.label.split(",")[0].trim()})
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById("spinner").style.display = "none";
+      if (d.ok) pollStatus();
+    })
+    .catch(function(e) {
+      document.getElementById("spinner").style.display = "none";
+      showMsg("Error al calcular ruta: " + e);
+    });
+}
+
+function recalculate() {
+  document.getElementById("spinner").style.display = "block";
+  fetch("/recalculate")
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById("spinner").style.display = "none";
+      pollStatus();
+    }).catch(function(){
+      document.getElementById("spinner").style.display = "none";
+    });
+}
+
+function cancelRoute() {
+  fetch("/set_destination", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({lat: 0, lon: 0, label: ""})
+  });
+  document.getElementById("nav-card").style.display = "none";
+  document.getElementById("steps-wrap").style.display = "none";
+  document.getElementById("search-input").value = "";
+}
+
+// ---- Status polling ----
+function fmtDist(m) {
+  if (m >= 1000) return (m/1000).toFixed(1) + " km";
+  return Math.round(m) + " m";
+}
+
+function pollStatus() {
+  fetch("/status")
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.dest_label || d.total_steps === 0) {
+        document.getElementById("nav-card").style.display = "none";
+        document.getElementById("steps-wrap").style.display = "none";
+        return;
+      }
+      // Nav card
+      document.getElementById("nav-dest").textContent = "▶ " + d.dest_label;
+      document.getElementById("nav-instruction").textContent = d.instruction;
+      document.getElementById("nav-dist").textContent = fmtDist(d.distance_m);
+      document.getElementById("nav-remaining").textContent =
+        d.remaining_m ? "Distancia restante: " + fmtDist(d.remaining_m) : "";
+      document.getElementById("nav-card").style.display = "block";
+
+      // Steps list
+      if (d.steps_list && d.steps_list.length) {
+        var html = "";
+        d.steps_list.forEach(function(s, i) {
+          var active = i === d.step_index ? " active" : "";
+          html += "<div class='step-row" + active + "'>"
+                + "<div class='step-num'>" + (i+1) + "</div>"
+                + "<div class='step-instr'>" + esc(s.i) + "</div>"
+                + "<div class='step-dist'>" + fmtDist(s.d) + "</div>"
+                + "</div>";
+        });
+        document.getElementById("steps-list").innerHTML = html;
+        document.getElementById("steps-wrap").style.display = "block";
+        // Scroll active step into view
+        var activeEl = document.querySelector(".step-row.active");
+        if (activeEl) activeEl.scrollIntoView({block:"nearest"});
+      }
     }).catch(function(){});
-  }
+}
 
-  function startGPS() {
-    if (!navigator.geolocation) {
-      updateStatus("GPS no disponible en este navegador", "err");
-      return;
-    }
-    updateStatus("Esperando señal GPS…", "warn");
-    watchId = navigator.geolocation.watchPosition(
-      function(pos) {
-        var lat = pos.coords.latitude;
-        var lon = pos.coords.longitude;
-        var acc = Math.round(pos.coords.accuracy);
-        sendLocation(lat, lon);
-        document.getElementById("info").textContent =
-          "Pos: " + lat.toFixed(5) + ", " + lon.toFixed(5) + " (±" + acc + "m)";
-        updateStatus("GPS activo — enviando posición", "ok");
-      },
-      function(err) {
-        updateStatus("Error GPS: " + err.message, "err");
-      },
-      {enableHighAccuracy: true, maximumAge: 3000, timeout: 10000}
-    );
-  }
-
-  function setDest() {
-    var lat = parseFloat(document.getElementById("dest_lat").value);
-    var lon = parseFloat(document.getElementById("dest_lon").value);
-    var lbl = document.getElementById("dest_label").value.trim() || (lat + "," + lon);
-    if (isNaN(lat) || isNaN(lon)) { alert("Ingresa coordenadas válidas"); return; }
-    fetch(BACKEND + "/set_destination", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({lat: lat, lon: lon, label: lbl})
-    }).then(function(r){ return r.json(); })
-      .then(function(d){ updateStatus("Ruta calculada: " + d.steps + " pasos", "ok"); })
-      .catch(function(e){ updateStatus("Error al calcular ruta: " + e, "err"); });
-  }
-
-  function recalculate() {
-    fetch(BACKEND + "/recalculate")
-      .then(function(r){ return r.json(); })
-      .then(function(d){ updateStatus("Ruta recalculada: " + d.steps + " pasos", "ok"); })
-      .catch(function(e){ updateStatus("Error: " + e, "err"); });
-  }
-
-  function pollStatus() {
-    fetch(BACKEND + "/status")
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        var txt = d.instruction;
-        if (d.distance_m) txt += " · " + (d.distance_m >= 1000
-          ? (d.distance_m/1000).toFixed(1) + " km"
-          : d.distance_m + " m");
-        document.getElementById("step").textContent = txt;
-      }).catch(function(){});
-  }
-
-  startGPS();
-  setInterval(pollStatus, 4000);
-  pollStatus();
-  </script>
+setInterval(pollStatus, 4000);
+pollStatus();
+</script>
 </body>
 </html>

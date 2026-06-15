@@ -4,7 +4,7 @@ import time
 import threading
 import requests
 from io import BytesIO
-from flask import Flask, request, jsonify, render_template, send_file, redirect, url_for
+from flask import Flask, request, jsonify, render_template, send_file, redirect, url_for, Response
 
 app = Flask(__name__)
 
@@ -23,8 +23,9 @@ state = {
 }
 state_lock = threading.Lock()
 
-OSRM_BASE = "http://router.project-osrm.org/route/v1/driving"
-TILE_URL   = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+OSRM_BASE      = "http://router.project-osrm.org/route/v1/driving"
+NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_UA   = "HondaGPSNav/1.0"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,7 +86,28 @@ def _parse_step(step):
         "distance_m":  round(dist),
         "lat": loc[1],
         "lon": loc[0],
+        "icon": _maneuver_icon(mtype, mod),
     }
+
+
+def _maneuver_icon(mtype, mod):
+    if mtype in ("arrive",):
+        return "★"
+    if mtype in ("depart",):
+        return "↑"
+    if mtype in ("roundabout", "rotary", "exit roundabout", "exit rotary"):
+        return "↻"
+    arrows = {
+        "left":         "←",
+        "right":        "→",
+        "slight left":  "↖",
+        "slight right": "↗",
+        "sharp left":   "↙",
+        "sharp right":  "↘",
+        "straight":     "↑",
+        "uturn":        "↩",
+    }
+    return arrows.get(mod, "↑")
 
 
 def _mod_es(mod):
@@ -231,6 +253,7 @@ def status():
         idx   = state["current_step"]
         steps = state["steps"]
         step  = steps[idx] if steps and idx < len(steps) else None
+        total_dist = sum(s["distance_m"] for s in steps[idx:]) if steps else 0
         return jsonify({
             "lat":         state["lat"],
             "lon":         state["lon"],
@@ -241,8 +264,43 @@ def status():
             "total_steps": len(steps),
             "instruction": step["instruction"] if step else "Sin ruta",
             "distance_m":  step["distance_m"] if step else 0,
+            "remaining_m": total_dist,
             "updated_at":  state["updated_at"],
+            "steps_list":  [
+                {"i": s["instruction"], "d": s["distance_m"]}
+                for s in steps
+            ],
         })
+
+
+@app.route("/search")
+def search():
+    """
+    Proxy Nominatim search so the mobile page doesn't hit it directly
+    (Nominatim requires a proper User-Agent and we control it server-side).
+    """
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+    try:
+        r = requests.get(
+            NOMINATIM_BASE,
+            params={"q": q, "format": "json", "limit": 6, "addressdetails": 1},
+            headers={"User-Agent": NOMINATIM_UA},
+            timeout=8,
+        )
+        r.raise_for_status()
+        results = [
+            {
+                "label": item.get("display_name", ""),
+                "lat":   float(item["lat"]),
+                "lon":   float(item["lon"]),
+            }
+            for item in r.json()
+        ]
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
 
 
 @app.route("/display")
@@ -260,16 +318,24 @@ def display():
         updated   = state["updated_at"]
         total     = len(steps)
 
-    step = steps[idx] if steps and idx < len(steps) else None
+    step      = steps[idx] if steps and idx < len(steps) else None
+    next_step = steps[idx + 1] if steps and idx + 1 < len(steps) else None
 
     if step:
         instruction = step["instruction"]
         dist_str    = _fmt_dist(step["distance_m"])
+        icon        = step.get("icon", "↑")
         progress    = f"Paso {idx+1} de {total}"
+        remaining_m = sum(s["distance_m"] for s in steps[idx:])
+        remaining   = _fmt_dist(remaining_m)
     else:
         instruction = "Sin ruta — configura destino en el móvil"
         dist_str    = ""
+        icon        = ""
         progress    = ""
+        remaining   = ""
+
+    next_text = f"{next_step['icon']} {next_step['instruction']}" if next_step else ""
 
     age = int(time.time() - updated) if updated else None
     map_url = _static_map_url(lat, lon) if lat else None
@@ -278,7 +344,10 @@ def display():
         "display.html",
         instruction=instruction,
         dist_str=dist_str,
+        icon=icon,
         progress=progress,
+        remaining=remaining,
+        next_text=next_text,
         dest_label=dest_lbl,
         map_url=map_url,
         gps_age=age,
