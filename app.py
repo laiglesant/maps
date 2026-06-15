@@ -404,46 +404,83 @@ def display():
 
 @app.route("/map.png")
 def map_png():
-    """Server-side generated map PNG — works on any browser, no hotlink issues."""
+    """
+    Pillow-only map: draws route + markers without fetching any external tiles.
+    Reliable on any host, no API keys, no hotlink issues.
+    """
+    from PIL import Image, ImageDraw
+
     with state_lock:
         lat    = state["lat"]
         lon    = state["lon"]
         dlat   = state["dest_lat"]
         dlon   = state["dest_lon"]
-        coords = state["route_coords"]
+        coords = list(state["route_coords"])
 
     if lat is None:
         return "", 404
 
-    try:
-        from staticmap import StaticMap, CircleMarker, Line
-        m = StaticMap(380, 220,
-                      url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                      headers={"User-Agent": NOMINATIM_UA})
+    W, H = 380, 220
 
-        # Route polyline
-        if coords and len(coords) >= 2:
-            line_coords = [[c[1], c[0]] for c in coords]  # [lat,lon] → [lon,lat]
-            m.add_line(Line(line_coords, "#3498db", 4))
+    # Build bounding box from all relevant points
+    all_pts = [(lat, lon)]
+    if dlat is not None:
+        all_pts.append((dlat, dlon))
+    if coords:
+        all_pts += [(c[0], c[1]) for c in coords]
 
-        # Current position (blue)
-        m.add_marker(CircleMarker((lon, lat), "#3498db", 14))
-        m.add_marker(CircleMarker((lon, lat), "#fff", 6))
+    min_lat = min(p[0] for p in all_pts)
+    max_lat = max(p[0] for p in all_pts)
+    min_lon = min(p[1] for p in all_pts)
+    max_lon = max(p[1] for p in all_pts)
 
-        # Destination (red)
-        if dlat is not None:
-            m.add_marker(CircleMarker((dlon, dlat), "#e94560", 14))
-            m.add_marker(CircleMarker((dlon, dlat), "#fff", 6))
+    # Minimum span so a single point doesn't collapse the map
+    span_lat = max(max_lat - min_lat, 0.003)
+    span_lon = max(max_lon - min_lon, 0.005)
 
-        image = m.render(zoom=14)
-        buf = BytesIO()
-        image.save(buf, format="PNG")
-        buf.seek(0)
-        response = send_file(buf, mimetype="image/png")
-        response.headers["Cache-Control"] = "no-store, max-age=0"
-        return response
-    except Exception as e:
-        return f"Error generando mapa: {e}", 500
+    # Keep aspect ratio and add 15 % padding
+    pad_lat = span_lat * 0.15
+    pad_lon = span_lon * 0.15
+    min_lat -= pad_lat;  max_lat += pad_lat
+    min_lon -= pad_lon;  max_lon += pad_lon
+    span_lat = max_lat - min_lat
+    span_lon = max_lon - min_lon
+
+    def px(la, lo):
+        x = int((lo - min_lon) / span_lon * W)
+        y = int((max_lat - la) / span_lat * H)
+        return x, y
+
+    img  = Image.new("RGB", (W, H), "#1a1a2e")
+    draw = ImageDraw.Draw(img)
+
+    # Subtle grid
+    for i in range(1, 4):
+        x = W * i // 4;  draw.line([(x, 0), (x, H)], fill="#252545", width=1)
+        y = H * i // 3;  draw.line([(0, y), (W, y)], fill="#252545", width=1)
+
+    # Route polyline
+    if len(coords) >= 2:
+        pts = [px(c[0], c[1]) for c in coords]
+        for i in range(len(pts) - 1):
+            draw.line([pts[i], pts[i + 1]], fill="#3498db", width=4)
+
+    # Destination marker (red)
+    if dlat is not None:
+        dx, dy = px(dlat, dlon)
+        draw.ellipse([dx-9, dy-9, dx+9, dy+9], fill="#e94560", outline="#fff", width=2)
+
+    # Current position (blue dot with white ring)
+    cx, cy = px(lat, lon)
+    draw.ellipse([cx-11, cy-11, cx+11, cy+11], fill="#2980b9", outline="#fff", width=2)
+    draw.ellipse([cx-5,  cy-5,  cx+5,  cy+5],  fill="#fff")
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    response = send_file(buf, mimetype="image/png")
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 
 if __name__ == "__main__":
