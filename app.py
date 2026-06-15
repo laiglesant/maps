@@ -17,9 +17,11 @@ state = {
     "dest_lat": None,
     "dest_lon": None,
     "dest_label": "",
-    "steps": [],          # parsed OSRM steps
+    "steps": [],
+    "route_coords": [],   # [[lat,lon], ...] for map polyline
     "current_step": 0,
     "updated_at": 0,
+    "osrm_error": None,
 }
 state_lock = threading.Lock()
 
@@ -42,16 +44,26 @@ def _haversine(lat1, lon1, lat2, lon2):
 
 def _osrm_route(lat1, lon1, lat2, lon2):
     url = f"{OSRM_BASE}/{lon1},{lat1};{lon2},{lat2}"
-    params = {"overview": "full", "steps": "true", "geometries": "geojson", "language": "es"}
-    try:
-        r = requests.get(url, params=params, timeout=8)
-        r.raise_for_status()
-        data = r.json()
-        if data.get("code") != "Ok":
-            return []
-        return data["routes"][0]["legs"][0]["steps"]
-    except Exception:
-        return []
+    params = {"overview": "full", "steps": "true", "geometries": "geojson"}
+    for attempt in range(3):
+        try:
+            r = requests.get(url, params=params, timeout=12)
+            r.raise_for_status()
+            data = r.json()
+            if data.get("code") != "Ok":
+                return None, [], f"OSRM: {data.get('code')}"
+            route    = data["routes"][0]
+            steps    = route["legs"][0]["steps"]
+            # GeoJSON coords are [lon, lat] → flip to [lat, lon] for Leaflet
+            raw_coords = route["geometry"]["coordinates"]
+            coords = [[c[1], c[0]] for c in raw_coords]
+            return steps, coords, None
+        except requests.Timeout:
+            if attempt == 2:
+                return None, [], "OSRM timeout (3 intentos)"
+        except Exception as e:
+            return None, [], str(e)
+    return None, [], "Error desconocido"
 
 
 def _parse_step(step):
@@ -205,14 +217,18 @@ def update_location():
         state["lat"] = lat
         state["lon"] = lon
         state["updated_at"] = time.time()
+        route_ready = False
         # Auto-calculate route on first GPS fix if destination already set
         if first_fix and state["dest_lat"] is not None and not state["steps"]:
-            raw = _osrm_route(lat, lon, state["dest_lat"], state["dest_lon"])
-            state["steps"] = [_parse_step(s) for s in raw]
+            raw, coords, err = _osrm_route(lat, lon, state["dest_lat"], state["dest_lon"])
+            state["steps"]        = [_parse_step(s) for s in raw] if raw else []
+            state["route_coords"] = coords
+            state["osrm_error"]   = err
             state["current_step"] = 0
+            route_ready = bool(state["steps"])
         else:
             _advance_step()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "route_ready": route_ready})
 
 
 @app.route("/set_destination", methods=["POST"])
@@ -230,10 +246,14 @@ def set_destination():
         state["current_step"] = 0
 
         if state["lat"] is not None:
-            raw_steps = _osrm_route(state["lat"], state["lon"], dest_lat, dest_lon)
-            state["steps"] = [_parse_step(s) for s in raw_steps]
+            raw, coords, err = _osrm_route(state["lat"], state["lon"], dest_lat, dest_lon)
+            state["steps"]        = [_parse_step(s) for s in raw] if raw else []
+            state["route_coords"] = coords
+            state["osrm_error"]   = err
         else:
-            state["steps"] = []
+            state["steps"]        = []
+            state["route_coords"] = []
+            state["osrm_error"]   = None
 
     return jsonify({"ok": True, "steps": len(state["steps"])})
 
@@ -245,6 +265,8 @@ def cancel_route():
         state["dest_lon"]    = None
         state["dest_label"]  = ""
         state["steps"]       = []
+        state["route_coords"] = []
+        state["osrm_error"]  = None
         state["current_step"] = 0
     return jsonify({"ok": True})
 
@@ -255,11 +277,13 @@ def recalculate():
     with state_lock:
         if state["lat"] is None or state["dest_lat"] is None:
             return jsonify({"ok": False, "reason": "no position or destination"})
-        raw_steps = _osrm_route(
+        raw, coords, err = _osrm_route(
             state["lat"], state["lon"],
             state["dest_lat"], state["dest_lon"]
         )
-        state["steps"] = [_parse_step(s) for s in raw_steps]
+        state["steps"]        = [_parse_step(s) for s in raw] if raw else []
+        state["route_coords"] = coords
+        state["osrm_error"]   = err
         state["current_step"] = 0
     return jsonify({"ok": True, "steps": len(state["steps"])})
 
@@ -283,9 +307,11 @@ def status():
             "instruction": step["instruction"] if step else "Sin ruta",
             "distance_m":  step["distance_m"] if step else 0,
             "remaining_m": total_dist,
-            "has_gps":     state["lat"] is not None,
-            "updated_at":  state["updated_at"],
-            "steps_list":  [
+            "has_gps":      state["lat"] is not None,
+            "updated_at":   state["updated_at"],
+            "osrm_error":   state["osrm_error"],
+            "route_coords": state["route_coords"],
+            "steps_list":   [
                 {"i": s["instruction"], "d": s["distance_m"]}
                 for s in steps
             ],
