@@ -115,9 +115,10 @@
     <div id="gps">GPS: sin datos</div>
   {% endif %}
 
-  {% if map_url %}
+  {% if has_gps %}
   <div id="map">
-    <img src="{{ map_url }}" alt="Mapa" width="380" height="240">
+    <img src="/map.png" alt="Mapa" width="380" height="220"
+         style="border:1px solid #333;display:block;margin-top:8px">
   </div>
   {% endif %}
 

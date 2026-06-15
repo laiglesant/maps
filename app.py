@@ -383,8 +383,6 @@ def display():
     next_text = f"{next_step['icon']} {next_step['instruction']}" if next_step else ""
 
     age = int(time.time() - updated) if updated else None
-    map_url = _static_map_url(lat, lon) if lat else None
-
     resp = render_template(
         "display.html",
         instruction=instruction,
@@ -394,7 +392,7 @@ def display():
         remaining=remaining,
         next_text=next_text,
         dest_label=dest_lbl,
-        map_url=map_url,
+        has_gps=(lat is not None),
         gps_age=age,
     )
     response = app.make_response(resp)
@@ -402,6 +400,50 @@ def display():
     response.headers["Pragma"]        = "no-cache"
     response.headers["Expires"]       = "0"
     return response
+
+
+@app.route("/map.png")
+def map_png():
+    """Server-side generated map PNG — works on any browser, no hotlink issues."""
+    with state_lock:
+        lat    = state["lat"]
+        lon    = state["lon"]
+        dlat   = state["dest_lat"]
+        dlon   = state["dest_lon"]
+        coords = state["route_coords"]
+
+    if lat is None:
+        return "", 404
+
+    try:
+        from staticmap import StaticMap, CircleMarker, Line
+        m = StaticMap(380, 220,
+                      url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                      headers={"User-Agent": NOMINATIM_UA})
+
+        # Route polyline
+        if coords and len(coords) >= 2:
+            line_coords = [[c[1], c[0]] for c in coords]  # [lat,lon] → [lon,lat]
+            m.add_line(Line(line_coords, "#3498db", 4))
+
+        # Current position (blue)
+        m.add_marker(CircleMarker((lon, lat), "#3498db", 14))
+        m.add_marker(CircleMarker((lon, lat), "#fff", 6))
+
+        # Destination (red)
+        if dlat is not None:
+            m.add_marker(CircleMarker((dlon, dlat), "#e94560", 14))
+            m.add_marker(CircleMarker((dlon, dlat), "#fff", 6))
+
+        image = m.render(zoom=14)
+        buf = BytesIO()
+        image.save(buf, format="PNG")
+        buf.seek(0)
+        response = send_file(buf, mimetype="image/png")
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        return response
+    except Exception as e:
+        return f"Error generando mapa: {e}", 500
 
 
 if __name__ == "__main__":
