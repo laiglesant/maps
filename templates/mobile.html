@@ -209,7 +209,7 @@
   <div id="results"></div>
 </div>
 
-<div id="spinner">Calculando ruta…</div>
+<div id="spinner" style="display:none">Calculando ruta…</div>
 
 <div id="nav-card">
   <div id="nav-dest"></div>
@@ -334,47 +334,50 @@ function esc(s) {
 function selectDest(item) {
   hideResults();
   showMsg("");
-  document.getElementById("search-input").value = item.label.split(",")[0].trim();
-  document.getElementById("spinner").style.display = "block";
-  document.getElementById("nav-card").style.display = "none";
-  document.getElementById("steps-wrap").style.display = "none";
+  var name = item.label.split(",")[0].trim();
+  document.getElementById("search-input").value = name;
+  showSpinner("Guardando destino…");
 
   fetch("/set_destination", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({lat: item.lat, lon: item.lon, label: item.label.split(",")[0].trim()})
+    body: JSON.stringify({lat: item.lat, lon: item.lon, label: name})
   }).then(function(r) { return r.json(); })
     .then(function(d) {
-      document.getElementById("spinner").style.display = "none";
-      if (d.ok) pollStatus();
+      hideSpinner();
+      pollStatus();
     })
     .catch(function(e) {
-      document.getElementById("spinner").style.display = "none";
-      showMsg("Error al calcular ruta: " + e);
+      hideSpinner();
+      showMsg("Error: " + e);
     });
 }
 
 function recalculate() {
-  document.getElementById("spinner").style.display = "block";
+  showSpinner("Recalculando…");
   fetch("/recalculate")
     .then(function(r) { return r.json(); })
-    .then(function(d) {
-      document.getElementById("spinner").style.display = "none";
-      pollStatus();
-    }).catch(function(){
-      document.getElementById("spinner").style.display = "none";
-    });
+    .then(function(d) { hideSpinner(); pollStatus(); })
+    .catch(function()  { hideSpinner(); });
 }
 
 function cancelRoute() {
-  fetch("/set_destination", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({lat: 0, lon: 0, label: ""})
-  });
-  document.getElementById("nav-card").style.display = "none";
+  fetch("/cancel_route").catch(function(){});
+  document.getElementById("nav-card").style.display   = "none";
   document.getElementById("steps-wrap").style.display = "none";
   document.getElementById("search-input").value = "";
+  showMsg("");
+}
+
+function showSpinner(msg) {
+  var el = document.getElementById("spinner");
+  el.textContent    = msg || "Calculando…";
+  el.style.display  = "block";
+  document.getElementById("nav-card").style.display   = "none";
+  document.getElementById("steps-wrap").style.display = "none";
+}
+function hideSpinner() {
+  document.getElementById("spinner").style.display = "none";
 }
 
 // ---- Status polling ----
@@ -387,16 +390,40 @@ function pollStatus() {
   fetch("/status")
     .then(function(r) { return r.json(); })
     .then(function(d) {
+      hideSpinner();
+
+      // Destination set but GPS not yet available
+      if (d.dest_label && !d.has_gps) {
+        document.getElementById("nav-card").style.display = "block";
+        document.getElementById("nav-dest").textContent        = "▶ " + d.dest_label;
+        document.getElementById("nav-instruction").textContent = "Esperando señal GPS…";
+        document.getElementById("nav-dist").textContent        = "";
+        document.getElementById("nav-remaining").textContent   = "La ruta se calculará al obtener posición";
+        document.getElementById("steps-wrap").style.display    = "none";
+        return;
+      }
+
+      // Destination set, GPS ok but route still calculating
+      if (d.dest_label && d.has_gps && d.total_steps === 0) {
+        showSpinner("Calculando ruta…");
+        // Trigger recalculate and re-poll in 2s
+        fetch("/recalculate").catch(function(){});
+        setTimeout(pollStatus, 2000);
+        return;
+      }
+
+      // No destination
       if (!d.dest_label || d.total_steps === 0) {
-        document.getElementById("nav-card").style.display = "none";
+        document.getElementById("nav-card").style.display   = "none";
         document.getElementById("steps-wrap").style.display = "none";
         return;
       }
-      // Nav card
-      document.getElementById("nav-dest").textContent = "▶ " + d.dest_label;
+
+      // Full nav state
+      document.getElementById("nav-dest").textContent        = "▶ " + d.dest_label;
       document.getElementById("nav-instruction").textContent = d.instruction;
-      document.getElementById("nav-dist").textContent = fmtDist(d.distance_m);
-      document.getElementById("nav-remaining").textContent =
+      document.getElementById("nav-dist").textContent        = fmtDist(d.distance_m);
+      document.getElementById("nav-remaining").textContent   =
         d.remaining_m ? "Distancia restante: " + fmtDist(d.remaining_m) : "";
       document.getElementById("nav-card").style.display = "block";
 
@@ -411,11 +438,10 @@ function pollStatus() {
                 + "<div class='step-dist'>" + fmtDist(s.d) + "</div>"
                 + "</div>";
         });
-        document.getElementById("steps-list").innerHTML = html;
+        document.getElementById("steps-list").innerHTML     = html;
         document.getElementById("steps-wrap").style.display = "block";
-        // Scroll active step into view
         var activeEl = document.querySelector(".step-row.active");
-        if (activeEl) activeEl.scrollIntoView({block:"nearest"});
+        if (activeEl) activeEl.scrollIntoView({block: "nearest"});
       }
     }).catch(function(){});
 }

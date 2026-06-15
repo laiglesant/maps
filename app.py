@@ -201,10 +201,17 @@ def update_location():
     lat  = float(data["lat"])
     lon  = float(data["lon"])
     with state_lock:
+        first_fix = state["lat"] is None
         state["lat"] = lat
         state["lon"] = lon
         state["updated_at"] = time.time()
-        _advance_step()
+        # Auto-calculate route on first GPS fix if destination already set
+        if first_fix and state["dest_lat"] is not None and not state["steps"]:
+            raw = _osrm_route(lat, lon, state["dest_lat"], state["dest_lon"])
+            state["steps"] = [_parse_step(s) for s in raw]
+            state["current_step"] = 0
+        else:
+            _advance_step()
     return jsonify({"ok": True})
 
 
@@ -229,6 +236,17 @@ def set_destination():
             state["steps"] = []
 
     return jsonify({"ok": True, "steps": len(state["steps"])})
+
+
+@app.route("/cancel_route")
+def cancel_route():
+    with state_lock:
+        state["dest_lat"]    = None
+        state["dest_lon"]    = None
+        state["dest_label"]  = ""
+        state["steps"]       = []
+        state["current_step"] = 0
+    return jsonify({"ok": True})
 
 
 @app.route("/recalculate")
@@ -265,6 +283,7 @@ def status():
             "instruction": step["instruction"] if step else "Sin ruta",
             "distance_m":  step["distance_m"] if step else 0,
             "remaining_m": total_dist,
+            "has_gps":     state["lat"] is not None,
             "updated_at":  state["updated_at"],
             "steps_list":  [
                 {"i": s["instruction"], "d": s["distance_m"]}
