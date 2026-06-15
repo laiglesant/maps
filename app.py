@@ -385,7 +385,7 @@ def display():
     age = int(time.time() - updated) if updated else None
     map_url = _static_map_url(lat, lon) if lat else None
 
-    return render_template(
+    resp = render_template(
         "display.html",
         instruction=instruction,
         dist_str=dist_str,
@@ -397,6 +397,11 @@ def display():
         map_url=map_url,
         gps_age=age,
     )
+    response = app.make_response(resp)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"]        = "no-cache"
+    response.headers["Expires"]       = "0"
+    return response
 
 
 if __name__ == "__main__":
