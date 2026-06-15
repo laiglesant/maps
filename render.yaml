@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: honda-gps-nav
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 60
+    envVars:
+      - key: GEOAPIFY_KEY
+        sync: false   # set in Render dashboard (free tier key, optional)

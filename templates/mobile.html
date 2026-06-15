@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GPS Móvil</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 12px; background: #f5f5f5; }
+    h2 { margin: 0 0 12px; }
+    #status { padding: 8px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+    .ok   { background: #d4edda; color: #155724; }
+    .warn { background: #fff3cd; color: #856404; }
+    .err  { background: #f8d7da; color: #721c24; }
+    label { display: block; margin-top: 10px; font-weight: bold; font-size: 14px; }
+    input[type=text], input[type=number] {
+      width: 100%; padding: 8px; box-sizing: border-box;
+      border: 1px solid #ccc; border-radius: 4px; font-size: 14px;
+    }
+    button {
+      margin-top: 10px; padding: 10px 16px; background: #007bff;
+      color: #fff; border: none; border-radius: 4px; font-size: 15px; cursor: pointer;
+    }
+    button:active { background: #0056b3; }
+    #info { font-size: 13px; color: #555; margin-top: 12px; }
+    #step { font-size: 15px; font-weight: bold; margin-top: 10px; color: #333; }
+    hr { margin: 16px 0; }
+  </style>
+</head>
+<body>
+  <h2>Control de Navegación</h2>
+
+  <div id="status" class="warn">Iniciando GPS…</div>
+
+  <label>Destino (descripción)</label>
+  <input type="text" id="dest_label" placeholder="Ej: Supermercado">
+
+  <label>Latitud destino</label>
+  <input type="number" id="dest_lat" step="any"
+    value="{{ dest_lat if dest_lat else '' }}"
+    placeholder="-34.12345">
+
+  <label>Longitud destino</label>
+  <input type="number" id="dest_lon" step="any"
+    value="{{ dest_lon if dest_lon else '' }}"
+    placeholder="-58.12345">
+
+  <button onclick="setDest()">Establecer destino y calcular ruta</button>
+  <button onclick="recalculate()" style="background:#28a745;margin-left:6px">Recalcular</button>
+
+  <hr>
+  <div id="step">—</div>
+  <div id="info">Posición: —</div>
+
+  <script>
+  var watchId = null;
+  var currentLat = null, currentLon = null;
+  var BACKEND = "";   // mismo origen
+
+  function updateStatus(msg, cls) {
+    var el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = cls;
+  }
+
+  function sendLocation(lat, lon) {
+    currentLat = lat; currentLon = lon;
+    fetch(BACKEND + "/update_location", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({lat: lat, lon: lon})
+    }).catch(function(){});
+  }
+
+  function startGPS() {
+    if (!navigator.geolocation) {
+      updateStatus("GPS no disponible en este navegador", "err");
+      return;
+    }
+    updateStatus("Esperando señal GPS…", "warn");
+    watchId = navigator.geolocation.watchPosition(
+      function(pos) {
+        var lat = pos.coords.latitude;
+        var lon = pos.coords.longitude;
+        var acc = Math.round(pos.coords.accuracy);
+        sendLocation(lat, lon);
+        document.getElementById("info").textContent =
+          "Pos: " + lat.toFixed(5) + ", " + lon.toFixed(5) + " (±" + acc + "m)";
+        updateStatus("GPS activo — enviando posición", "ok");
+      },
+      function(err) {
+        updateStatus("Error GPS: " + err.message, "err");
+      },
+      {enableHighAccuracy: true, maximumAge: 3000, timeout: 10000}
+    );
+  }
+
+  function setDest() {
+    var lat = parseFloat(document.getElementById("dest_lat").value);
+    var lon = parseFloat(document.getElementById("dest_lon").value);
+    var lbl = document.getElementById("dest_label").value.trim() || (lat + "," + lon);
+    if (isNaN(lat) || isNaN(lon)) { alert("Ingresa coordenadas válidas"); return; }
+    fetch(BACKEND + "/set_destination", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({lat: lat, lon: lon, label: lbl})
+    }).then(function(r){ return r.json(); })
+      .then(function(d){ updateStatus("Ruta calculada: " + d.steps + " pasos", "ok"); })
+      .catch(function(e){ updateStatus("Error al calcular ruta: " + e, "err"); });
+  }
+
+  function recalculate() {
+    fetch(BACKEND + "/recalculate")
+      .then(function(r){ return r.json(); })
+      .then(function(d){ updateStatus("Ruta recalculada: " + d.steps + " pasos", "ok"); })
+      .catch(function(e){ updateStatus("Error: " + e, "err"); });
+  }
+
+  function pollStatus() {
+    fetch(BACKEND + "/status")
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var txt = d.instruction;
+        if (d.distance_m) txt += " · " + (d.distance_m >= 1000
+          ? (d.distance_m/1000).toFixed(1) + " km"
+          : d.distance_m + " m");
+        document.getElementById("step").textContent = txt;
+      }).catch(function(){});
+  }
+
+  startGPS();
+  setInterval(pollStatus, 4000);
+  pollStatus();
+  </script>
+</body>
+</html>

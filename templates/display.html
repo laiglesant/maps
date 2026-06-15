@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="5">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Navegación</title>
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 8px;
+      font-size: 18px;
+    }
+    #dest {
+      font-size: 14px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+    #instruction {
+      font-size: 28px;
+      font-weight: bold;
+      color: #0f0;
+      margin: 10px 0;
+      line-height: 1.3;
+    }
+    #dist {
+      font-size: 42px;
+      font-weight: bold;
+      color: #ff0;
+      margin: 6px 0;
+    }
+    #progress {
+      font-size: 14px;
+      color: #aaa;
+      margin-top: 4px;
+    }
+    #gps {
+      font-size: 12px;
+      color: #888;
+      margin-top: 6px;
+    }
+    #map {
+      margin-top: 10px;
+    }
+    #map img {
+      max-width: 100%;
+      border: 1px solid #444;
+      display: block;
+    }
+    #noroute {
+      font-size: 22px;
+      color: #f80;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  {% if dest_label and dest_label != "—" %}
+  <div id="dest">▶ {{ dest_label }}</div>
+  {% endif %}
+
+  {% if progress %}
+    <div id="instruction">{{ instruction }}</div>
+    <div id="dist">{{ dist_str }}</div>
+    <div id="progress">{{ progress }}</div>
+  {% else %}
+    <div id="noroute">{{ instruction }}</div>
+  {% endif %}
+
+  {% if gps_age is not none %}
+    <div id="gps">GPS actualizado hace {{ gps_age }}s</div>
+  {% else %}
+    <div id="gps">GPS: sin datos</div>
+  {% endif %}
+
+  {% if map_url %}
+  <div id="map">
+    <img src="{{ map_url }}" alt="Mapa" width="400" height="300">
+  </div>
+  {% endif %}
+
+</body>
+</html>
